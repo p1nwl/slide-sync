@@ -103,19 +103,18 @@ export const SlideEditor = ({
     setShowStylePanel(false);
   }, []);
 
-  const handleDragStart = useCallback(
-    (stableElementId: string, e: React.MouseEvent) => {
-      if (!isEditor) return;
+  const handleDragStart = (stableElementId: string, e: React.MouseEvent) => {
+    if (!isEditor) return;
 
-      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      setDraggingElementId(stableElementId);
-      setDragOffset({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-      });
-    },
-    [isEditor]
-  );
+    const elementDomNode = e.currentTarget as HTMLElement;
+    const rect = elementDomNode.getBoundingClientRect();
+
+    setDraggingElementId(stableElementId);
+    setDragOffset({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    });
+  };
 
   const handleDrag = useCallback(
     (e: React.MouseEvent) => {
@@ -123,8 +122,9 @@ export const SlideEditor = ({
 
       e.preventDefault();
       const slideRect = slideRef.current.getBoundingClientRect();
-      const newX = e.clientX - slideRect.left - dragOffset.x;
-      const newY = e.clientY - slideRect.top - dragOffset.y;
+
+      const newX = e.clientX - dragOffset.x - slideRect.left;
+      const newY = e.clientY - dragOffset.y - slideRect.top;
 
       const elementIndex = findElementIndexByStableId(draggingElementId);
       if (elementIndex === -1) {
@@ -390,7 +390,6 @@ export const SlideEditor = ({
 
   return (
     <div className="flex-1 flex flex-col h-full">
-      {/* Toolbar */}
       <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center space-x-2 flex-wrap">
         {isEditor && (
           <>
@@ -505,7 +504,6 @@ export const SlideEditor = ({
               minWidth: "800px",
               minHeight: "600px",
               transform: `scale(${zoom / 100})`,
-              cursor: isEditor ? "default" : "default",
             }}
           >
             {slide.elements.map((element, index) => {
@@ -521,8 +519,8 @@ export const SlideEditor = ({
                       : ""
                   } ${isEditor ? "cursor-move" : ""}`}
                   style={{
-                    left: `${element.position.x}px`,
-                    top: `${element.position.y}px`,
+                    left: `calc(${element.position.x}px - 5%)`,
+                    top: `calc(${element.position.y}px - 5%)`,
                     width: element.size?.width
                       ? `${element.size.width}px`
                       : "auto",
@@ -580,10 +578,13 @@ export const SlideEditor = ({
           </div>
         </div>
 
-        {showStylePanel && selectedElement && isEditor && (
-          <div className="w-64 bg-white border-l border-gray-200 p-4 overflow-y-auto">
+        {selectedElement && isEditor && (
+          <div
+            className={`absolute right-70 top-30 h-vh w-64 bg-white border border-gray-200 p-4 overflow-y-auto transform transition-transform duration-300 z-50 ${
+              showStylePanel ? "translate-x-0" : "translate-x-full"
+            }`}
+          >
             <h3 className="font-semibold mb-3">Element Styles</h3>
-
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -600,7 +601,6 @@ export const SlideEditor = ({
                   className="w-full h-8 rounded border border-gray-300"
                 />
               </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Border Color
@@ -616,7 +616,6 @@ export const SlideEditor = ({
                   className="w-full h-8 rounded border border-gray-300"
                 />
               </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Border Width
@@ -636,7 +635,6 @@ export const SlideEditor = ({
                   className="w-full"
                 />
               </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Border Radius
@@ -656,7 +654,6 @@ export const SlideEditor = ({
                   className="w-full"
                 />
               </div>
-
               {selectedElement.type === "text" && (
                 <>
                   <div>
@@ -678,7 +675,6 @@ export const SlideEditor = ({
                       className="w-full"
                     />
                   </div>
-
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Font Family
