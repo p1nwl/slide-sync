@@ -1,8 +1,10 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useCallback, useMemo } from "react";
 import MarkdownIt from "markdown-it";
 import type { Slide, PresentationElement } from "../types/index";
 
 const md = new MarkdownIt();
+
+type ClientPresentationElement = PresentationElement & { clientId?: string };
 
 interface SlideEditorProps {
   slide: Slide;
@@ -26,66 +28,138 @@ export const SlideEditor = ({
   const [zoom, setZoom] = useState(100);
   const slideRef = useRef<HTMLDivElement>(null);
 
-  console.log("Rendering SlideEditor with slide:", slide);
+  const generateClientId = useCallback(() => {
+    return `client_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }, []);
 
-  if (!slide) {
-    return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50">
-        <div className="text-gray-500">Select a slide to edit</div>
-      </div>
-    );
-  }
+  const getStableElementId = useCallback(
+    (element: ClientPresentationElement, index: number): string => {
+      if (
+        element._id &&
+        typeof element._id === "string" &&
+        element._id.length === 24 &&
+        /^[0-9a-fA-F]+$/.test(element._id)
+      ) {
+        return element._id;
+      }
+      if (element.clientId) {
+        return element.clientId;
+      }
+      if (element._id) {
+        return element._id;
+      }
+      return `fallback-${index}-${element.type}-${element.position?.x || 0}-${
+        element.position?.y || 0
+      }`;
+    },
+    []
+  );
 
-  const handleElementClick = (elementId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isEditor) {
-      setSelectedElementId(elementId);
-      setShowStylePanel(true);
-    }
-  };
+  const findElementIndexByStableId = useCallback(
+    (stableId: string): number => {
+      if (stableId.length === 24 && /^[0-9a-fA-F]{24}$/.test(stableId)) {
+        const indexById = slide.elements.findIndex(
+          (el) => (el as ClientPresentationElement)._id === stableId
+        );
+        if (indexById !== -1) return indexById;
+      }
 
-  const handleSlideClick = () => {
+      const indexByClientId = slide.elements.findIndex(
+        (el) => (el as ClientPresentationElement).clientId === stableId
+      );
+      if (indexByClientId !== -1) return indexByClientId;
+
+      const indexByTempId = slide.elements.findIndex(
+        (el) => (el as ClientPresentationElement)._id === stableId
+      );
+      if (indexByTempId !== -1) return indexByTempId;
+
+      for (let i = 0; i < slide.elements.length; i++) {
+        const element = slide.elements[i] as ClientPresentationElement;
+        const calculatedStableId = getStableElementId(element, i);
+        if (calculatedStableId === stableId) {
+          return i;
+        }
+      }
+
+      return -1;
+    },
+    [slide.elements, getStableElementId]
+  );
+
+  const handleElementClick = useCallback(
+    (stableElementId: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (isEditor) {
+        setSelectedElementId(stableElementId);
+        setShowStylePanel(true);
+      }
+    },
+    [isEditor]
+  );
+
+  const handleSlideClick = useCallback(() => {
     setSelectedElementId(null);
     setShowStylePanel(false);
-  };
+  }, []);
 
-  const handleDragStart = (elementId: string, e: React.MouseEvent) => {
-    if (!isEditor) return;
+  const handleDragStart = useCallback(
+    (stableElementId: string, e: React.MouseEvent) => {
+      if (!isEditor) return;
 
-    const element = slide.elements.find((el) => el._id === elementId);
-    if (!element) return;
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      setDraggingElementId(stableElementId);
+      setDragOffset({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      });
+    },
+    [isEditor]
+  );
 
-    const rect = (e.target as HTMLElement).getBoundingClientRect();
-    setDraggingElementId(elementId);
-    setDragOffset({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    });
-  };
+  const handleDrag = useCallback(
+    (e: React.MouseEvent) => {
+      if (!draggingElementId || !isEditor || !slideRef.current) return;
 
-  const handleDrag = (e: React.MouseEvent) => {
-    if (!draggingElementId || !isEditor || !slideRef.current) return;
+      e.preventDefault();
+      const slideRect = slideRef.current.getBoundingClientRect();
+      const newX = e.clientX - slideRect.left - dragOffset.x;
+      const newY = e.clientY - slideRect.top - dragOffset.y;
 
-    e.preventDefault();
-    const slideRect = slideRef.current.getBoundingClientRect();
-    const newX = e.clientX - slideRect.left - dragOffset.x;
-    const newY = e.clientY - slideRect.top - dragOffset.y;
+      const elementIndex = findElementIndexByStableId(draggingElementId);
+      if (elementIndex === -1) {
+        console.warn(
+          `Dragging element with stable ID ${draggingElementId} not found`
+        );
+        return;
+      }
 
-    updateElement(draggingElementId, {
-      position: { x: Math.max(0, newX), y: Math.max(0, newY) },
-    });
-  };
+      const newElements = [...slide.elements];
+      newElements[elementIndex] = {
+        ...newElements[elementIndex],
+        position: { x: Math.max(0, newX), y: Math.max(0, newY) },
+      };
+      onUpdateSlide(newElements);
+    },
+    [
+      draggingElementId,
+      dragOffset,
+      isEditor,
+      slide.elements,
+      onUpdateSlide,
+      findElementIndexByStableId,
+    ]
+  );
 
-  const handleDragEnd = () => {
+  const handleDragEnd = useCallback(() => {
     setDraggingElementId(null);
     setDragOffset({ x: 0, y: 0 });
-  };
+  }, []);
 
-  const addTextElement = () => {
+  const addTextElement = useCallback(() => {
     if (!isEditor) return;
 
-    const newTextElement: PresentationElement = {
-      _id: `element_${Date.now()}`,
+    const newTextElement: ClientPresentationElement = {
       type: "text",
       content: "New text",
       position: { x: 100, y: 100 },
@@ -98,17 +172,17 @@ export const SlideEditor = ({
         fontSize: "16px",
         fontFamily: "Arial, sans-serif",
       },
+      clientId: generateClientId(),
     };
 
     const newElements = [...slide.elements, newTextElement];
     onUpdateSlide(newElements);
-  };
+  }, [isEditor, slide.elements, onUpdateSlide, generateClientId]);
 
-  const addRectangleElement = () => {
+  const addRectangleElement = useCallback(() => {
     if (!isEditor) return;
 
-    const newElement: PresentationElement = {
-      _id: `element_${Date.now()}`,
+    const newElement: ClientPresentationElement = {
       type: "rectangle",
       position: { x: 150, y: 150 },
       size: { width: 150, height: 100 },
@@ -117,17 +191,17 @@ export const SlideEditor = ({
         border: "2px solid #1d4ed8",
         borderRadius: "8px",
       },
+      clientId: generateClientId(),
     };
 
     const newElements = [...slide.elements, newElement];
     onUpdateSlide(newElements);
-  };
+  }, [isEditor, slide.elements, onUpdateSlide, generateClientId]);
 
-  const addCircleElement = () => {
+  const addCircleElement = useCallback(() => {
     if (!isEditor) return;
 
-    const newElement: PresentationElement = {
-      _id: `element_${Date.now()}`,
+    const newElement: ClientPresentationElement = {
       type: "circle",
       position: { x: 200, y: 200 },
       size: { width: 120, height: 120 },
@@ -135,17 +209,17 @@ export const SlideEditor = ({
         backgroundColor: "#ef4444",
         borderRadius: "50%",
       },
+      clientId: generateClientId(),
     };
 
     const newElements = [...slide.elements, newElement];
     onUpdateSlide(newElements);
-  };
+  }, [isEditor, slide.elements, onUpdateSlide, generateClientId]);
 
-  const addArrowElement = () => {
+  const addArrowElement = useCallback(() => {
     if (!isEditor) return;
 
-    const newElement: PresentationElement = {
-      _id: `element_${Date.now()}`,
+    const newElement: ClientPresentationElement = {
       type: "arrow",
       position: { x: 250, y: 250 },
       size: { width: 100, height: 20 },
@@ -154,17 +228,17 @@ export const SlideEditor = ({
         clipPath:
           "polygon(0 50%, 80% 50%, 80% 30%, 100% 50%, 80% 70%, 80% 50%)",
       },
+      clientId: generateClientId(),
     };
 
     const newElements = [...slide.elements, newElement];
     onUpdateSlide(newElements);
-  };
+  }, [isEditor, slide.elements, onUpdateSlide, generateClientId]);
 
-  const addImageElement = () => {
+  const addImageElement = useCallback(() => {
     if (!isEditor) return;
 
-    const newElement: PresentationElement = {
-      _id: `element_${Date.now()}`,
+    const newElement: ClientPresentationElement = {
       type: "image",
       content: "https://via.placeholder.com/150",
       position: { x: 300, y: 150 },
@@ -173,96 +247,150 @@ export const SlideEditor = ({
         border: "2px solid #9ca3af",
         borderRadius: "4px",
       },
+      clientId: generateClientId(),
     };
 
     const newElements = [...slide.elements, newElement];
     onUpdateSlide(newElements);
-  };
+  }, [isEditor, slide.elements, onUpdateSlide, generateClientId]);
 
-  const updateElement = (
-    elementId: string,
-    updates: Partial<PresentationElement>
-  ) => {
-    if (!isEditor) return;
+  const updateElement = useCallback(
+    (stableElementId: string, updates: Partial<PresentationElement>) => {
+      if (!isEditor) return;
 
-    const newElements = slide.elements.map((el) =>
-      el._id === elementId ? { ...el, ...updates } : el
-    );
-    onUpdateSlide(newElements);
-  };
+      const elementIndex = findElementIndexByStableId(stableElementId);
+      if (elementIndex === -1) {
+        console.warn(
+          `Element with stable ID ${stableElementId} not found for update`
+        );
+        return;
+      }
 
-  const deleteElement = (elementId: string) => {
-    if (!isEditor) return;
-
-    const newElements = slide.elements.filter((el) => el._id !== elementId);
-    onUpdateSlide(newElements);
-    if (selectedElementId === elementId) {
-      setSelectedElementId(null);
-      setShowStylePanel(false);
-    }
-  };
-
-  const updateElementText = (elementId: string, content: string) => {
-    if (!isEditor) return;
-    updateElement(elementId, { content });
-  };
-
-  const updateElementStyle = (
-    elementId: string,
-    styleUpdates: Record<string, string>
-  ) => {
-    const element = slide.elements.find((el) => el._id === elementId);
-    if (!element || !isEditor) return;
-
-    const newStyle = { ...element.style, ...styleUpdates };
-    updateElement(elementId, { style: newStyle });
-  };
-
-  const formatText = (format: "bold" | "italic") => {
-    if (!selectedElementId || !isEditor) return;
-
-    const element = slide.elements.find((el) => el._id === selectedElementId);
-    if (!element || element.type !== "text") return;
-
-    const textarea = document.createElement("textarea");
-    textarea.value = element.content || "";
-    document.body.appendChild(textarea);
-    textarea.select();
-
-    let markdownWrapper = "";
-    if (format === "bold") markdownWrapper = "**";
-    if (format === "italic") markdownWrapper = "*";
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selectedText = textarea.value.substring(start, end);
-
-    const newText =
-      textarea.value.substring(0, start) +
-      markdownWrapper +
-      selectedText +
-      markdownWrapper +
-      textarea.value.substring(end);
-
-    document.body.removeChild(textarea);
-    updateElementText(selectedElementId, newText);
-  };
-
-  const renderMarkdown = (content: string = ""): { __html: string } => {
-    try {
-      return { __html: md.render(content) };
-    } catch (e) {
-      console.warn("Markdown render error:", e);
-      return { __html: content };
-    }
-  };
-
-  const selectedElement = slide.elements.find(
-    (el) => el._id === selectedElementId
+      const newElements = [...slide.elements];
+      newElements[elementIndex] = { ...newElements[elementIndex], ...updates };
+      onUpdateSlide(newElements);
+    },
+    [isEditor, slide.elements, onUpdateSlide, findElementIndexByStableId]
   );
+
+  const deleteElement = useCallback(
+    (stableElementId: string) => {
+      if (!isEditor) return;
+
+      const elementIndex = findElementIndexByStableId(stableElementId);
+      if (elementIndex === -1) {
+        console.warn(
+          `Element with stable ID ${stableElementId} not found for deletion`
+        );
+        return;
+      }
+
+      const newElements = [...slide.elements];
+      newElements.splice(elementIndex, 1);
+      onUpdateSlide(newElements);
+
+      if (selectedElementId === stableElementId) {
+        setSelectedElementId(null);
+        setShowStylePanel(false);
+      }
+    },
+    [
+      isEditor,
+      slide.elements,
+      selectedElementId,
+      onUpdateSlide,
+      findElementIndexByStableId,
+    ]
+  );
+
+  const updateElementText = useCallback(
+    (stableElementId: string, content: string) => {
+      if (!isEditor) return;
+      updateElement(stableElementId, { content });
+    },
+    [isEditor, updateElement]
+  );
+
+  const updateElementStyle = useCallback(
+    (stableElementId: string, styleUpdates: Record<string, string>) => {
+      const elementIndex = findElementIndexByStableId(stableElementId);
+      if (elementIndex === -1 || !isEditor) {
+        if (elementIndex === -1) {
+          console.warn(
+            `Element with stable ID ${stableElementId} not found for style update`
+          );
+        }
+        return;
+      }
+
+      const element = slide.elements[elementIndex];
+      const newStyle = { ...element.style, ...styleUpdates };
+      updateElement(stableElementId, { style: newStyle });
+    },
+    [isEditor, slide.elements, updateElement, findElementIndexByStableId]
+  );
+
+  const formatText = useCallback(
+    (format: "bold" | "italic") => {
+      if (!selectedElementId || !isEditor) return;
+
+      const elementIndex = findElementIndexByStableId(selectedElementId);
+      const element = slide.elements[elementIndex];
+      if (!element || element.type !== "text") return;
+
+      const textarea = document.createElement("textarea");
+      textarea.value = element.content || "";
+      document.body.appendChild(textarea);
+      textarea.select();
+
+      let markdownWrapper = "";
+      if (format === "bold") markdownWrapper = "**";
+      if (format === "italic") markdownWrapper = "*";
+
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const selectedText = textarea.value.substring(start, end);
+
+      const newText =
+        textarea.value.substring(0, start) +
+        markdownWrapper +
+        selectedText +
+        markdownWrapper +
+        textarea.value.substring(end);
+
+      document.body.removeChild(textarea);
+      updateElementText(selectedElementId, newText);
+    },
+    [
+      selectedElementId,
+      isEditor,
+      slide.elements,
+      updateElementText,
+      findElementIndexByStableId,
+    ]
+  );
+
+  const renderMarkdown = useCallback(
+    (content: string = ""): { __html: string } => {
+      try {
+        return { __html: md.render(content) };
+      } catch (error) {
+        console.warn("Markdown render error:", error);
+        return { __html: content };
+      }
+    },
+    []
+  );
+
+  const selectedElement = useMemo(() => {
+    if (!selectedElementId) return null;
+    const index = findElementIndexByStableId(selectedElementId);
+    return index !== -1 ? slide.elements[index] : null;
+  }, [selectedElementId, slide.elements, findElementIndexByStableId]);
 
   return (
     <div className="flex-1 flex flex-col h-full">
+      {/* Toolbar */}
       <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center space-x-2 flex-wrap">
         {isEditor && (
           <>
@@ -380,67 +508,75 @@ export const SlideEditor = ({
               cursor: isEditor ? "default" : "default",
             }}
           >
-            {slide.elements.map((element) => (
-              <div
-                key={element._id}
-                className={`absolute ${
-                  selectedElementId === element._id
-                    ? "ring-2 ring-blue-500 ring-offset-1"
-                    : ""
-                } ${isEditor ? "cursor-move" : ""}`}
-                style={{
-                  left: `${element.position.x}px`,
-                  top: `${element.position.y}px`,
-                  width: element.size?.width
-                    ? `${element.size.width}px`
-                    : "auto",
-                  height: element.size?.height
-                    ? `${element.size.height}px`
-                    : "auto",
-                  ...element.style,
-                  userSelect: "none",
-                }}
-                onClick={(e) => handleElementClick(element._id!, e)}
-                onMouseDown={(e) => handleDragStart(element._id!, e)}
-              >
-                {element.type === "text" && !isEditor && (
-                  <div
-                    dangerouslySetInnerHTML={renderMarkdown(element.content)}
-                    className="w-full h-full overflow-hidden"
-                    style={{
-                      pointerEvents: "none",
-                    }}
-                  />
-                )}
-                {element.type === "text" && isEditor && (
-                  <div
-                    contentEditable={
-                      isEditor && selectedElementId === element._id
-                    }
-                    suppressContentEditableWarning={true}
-                    onBlur={(e) => {
-                      if (isEditor) {
-                        updateElementText(element._id!, e.target.innerText);
+            {slide.elements.map((element, index) => {
+              const clientElement = element as ClientPresentationElement;
+              const stableElementId = getStableElementId(clientElement, index);
+
+              return (
+                <div
+                  key={stableElementId}
+                  className={`absolute ${
+                    selectedElementId === stableElementId
+                      ? "ring-2 ring-blue-500 ring-offset-1"
+                      : ""
+                  } ${isEditor ? "cursor-move" : ""}`}
+                  style={{
+                    left: `${element.position.x}px`,
+                    top: `${element.position.y}px`,
+                    width: element.size?.width
+                      ? `${element.size.width}px`
+                      : "auto",
+                    height: element.size?.height
+                      ? `${element.size.height}px`
+                      : "auto",
+                    ...element.style,
+                    userSelect: "none",
+                  }}
+                  onClick={(e) => handleElementClick(stableElementId, e)}
+                  onMouseDown={(e) => handleDragStart(stableElementId, e)}
+                >
+                  {element.type === "text" && !isEditor && (
+                    <div
+                      dangerouslySetInnerHTML={renderMarkdown(element.content)}
+                      className="w-full h-full overflow-hidden"
+                      style={{
+                        pointerEvents: "none",
+                      }}
+                    />
+                  )}
+                  {element.type === "text" && isEditor && (
+                    <div
+                      contentEditable={
+                        isEditor && selectedElementId === stableElementId
                       }
-                    }}
-                    className="outline-none w-full h-full overflow-hidden"
-                    style={{
-                      pointerEvents: isEditor ? "auto" : "none",
-                    }}
-                  >
-                    {element.content}
-                  </div>
-                )}
-                {element.type === "image" && (
-                  <img
-                    src={element.content || "https://via.placeholder.com/150"}
-                    alt="Presentation element"
-                    className="w-full h-full object-contain"
-                    draggable={false}
-                  />
-                )}
-              </div>
-            ))}
+                      suppressContentEditableWarning={true}
+                      onBlur={(e) => {
+                        if (isEditor) {
+                          updateElementText(
+                            stableElementId,
+                            e.target.innerText
+                          );
+                        }
+                      }}
+                      className="outline-none w-full h-full overflow-hidden"
+                      style={{
+                        pointerEvents: isEditor ? "auto" : "none",
+                      }}
+                    >
+                      {element.content}
+                    </div>
+                  )}
+                  {element.type === "image" && (
+                    <img
+                      src={element.content || "https://via.placeholder.com/150"}
+                      alt="Presentation element"
+                      className="w-full h-full object-contain"
+                      draggable={false}
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
 

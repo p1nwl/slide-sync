@@ -16,11 +16,12 @@ export const api = {
   ): Promise<Presentation> => {
     const response = await fetch(`${API_BASE_URL}/presentations`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title, creatorNickname, creatorUserId }),
     });
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status} ${response.statusText}`);
+    }
     return response.json();
   },
 

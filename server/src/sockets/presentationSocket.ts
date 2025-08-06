@@ -51,42 +51,40 @@ export const setupSocketHandlers = (io: Server, socket: Socket) => {
       );
 
       socket.join(presentationId);
-      const updateResult = await Presentation.updateOne(
-        { _id: presentationId, "users.id": userId },
-        { $set: { "users.$.nickname": nickname } }
+
+      const presentation = await Presentation.findById(presentationId);
+      if (!presentation) {
+        socket.emit("error", { message: "Presentation not found" });
+        return;
+      }
+
+      const existingUserIndex = presentation.users.findIndex(
+        (u) => u.id === userId
       );
 
-      if (updateResult.matchedCount > 0) {
-        if (updateResult.modifiedCount > 0) {
+      if (existingUserIndex > -1) {
+        const existingUser = presentation.users[existingUserIndex];
+        if (existingUser.nickname !== nickname) {
+          presentation.users[existingUserIndex].nickname = nickname;
+          await presentation.save();
           console.log(
             `[JOIN] User ${userId} nickname updated in presentation ${presentationId}`
           );
-        } else {
-          console.log(
-            `[JOIN] User ${userId} found in presentation ${presentationId}, nickname was already up-to-date`
-          );
         }
         console.log(
-          `[JOIN] User ${userId} found and (potentially) updated. No need to add.`
+          `[JOIN] User ${userId} found in presentation ${presentationId}, no changes needed.`
         );
       } else {
-        console.log(
-          `[JOIN] User ${userId} not found in presentation ${presentationId}. Adding as viewer.`
-        );
-        const addToSetResult = await Presentation.updateOne(
-          { _id: presentationId },
-          { $addToSet: { users: { id: userId, nickname, role: "viewer" } } }
-        );
+        presentation.users.push({
+          id: userId,
+          nickname,
+          role: "viewer",
+        });
 
-        if (addToSetResult.modifiedCount > 0) {
-          console.log(
-            `[JOIN] New user ${userId} added to presentation ${presentationId} with default role: viewer`
-          );
-        } else {
-          console.warn(
-            `[JOIN] User ${userId} was not added to presentation ${presentationId} by $addToSet. Possible race condition.`
-          );
-        }
+        await presentation.save();
+        console.log(
+          `[JOIN] New user ${userId} added to presentation ${presentationId} as viewer`
+        );
       }
 
       const updatedPresentation = await Presentation.findById(presentationId);
@@ -95,11 +93,9 @@ export const setupSocketHandlers = (io: Server, socket: Socket) => {
         socket.emit("presentation_updated", updatedPresentation);
       } else {
         console.error(
-          `[JOIN] Presentation ${presentationId} disappeared after update during join of ${userId}`
+          `[JOIN] Failed to reload presentation ${presentationId} after update`
         );
-        socket.emit("error", {
-          message: "Presentation data inconsistency after join",
-        });
+        socket.emit("error", { message: "Presentation data inconsistency" });
       }
     } catch (error) {
       console.error("[JOIN] Error in join_presentation handler:", error);
@@ -113,36 +109,16 @@ export const setupSocketHandlers = (io: Server, socket: Socket) => {
       try {
         const { presentationId, userId } = data;
         console.log(
-          `Socket ${socket.id} attempting to leave presentation ${presentationId} as user ${userId}`
+          `[LEAVE] Socket ${socket.id} attempting to leave presentation ${presentationId} as user ${userId}`
         );
 
-        const pullResult = await Presentation.updateOne(
-          { _id: presentationId },
-          { $pull: { users: { id: userId } } }
-        );
-
-        if (pullResult.modifiedCount > 0) {
-          console.log(
-            `User ${userId} removed from presentation ${presentationId}`
-          );
-          const updatedPresentation = await Presentation.findById(
-            presentationId
-          );
-          if (updatedPresentation) {
-            io.to(presentationId).emit(
-              "users_updated",
-              updatedPresentation.users
-            );
-          }
-        } else {
-          console.log(
-            `User ${userId} was NOT found in presentation ${presentationId} during leave.`
-          );
-        }
         socket.leave(presentationId);
-        console.log(`Socket ${socket.id} left room ${presentationId}`);
+        console.log(`[LEAVE] Socket ${socket.id} left room ${presentationId}`);
+        console.log(
+          `[LEAVE] User ${userId} left presentation ${presentationId} (not removed from user list)`
+        );
       } catch (error) {
-        console.error("Error in leave_presentation handler:", error);
+        console.error("[LEAVE] Error in leave_presentation handler:", error);
       }
     }
   );

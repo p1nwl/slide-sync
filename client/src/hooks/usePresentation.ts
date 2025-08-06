@@ -32,6 +32,7 @@ export const usePresentation = (presentationId?: string) => {
       elements: PresentationElement[];
     }) => {
       setPresentation((prev) => {
+        console.log("[WS] slide_updated received", { slideIndex, elements });
         if (!prev) return null;
         const newSlides = [...prev.slides];
         if (newSlides[slideIndex]) {
