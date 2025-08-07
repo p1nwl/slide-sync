@@ -118,8 +118,9 @@ export const PresentationEditor = () => {
     return (
       <PresentationMode
         presentation={{ ...presentation, slides: historySlides }}
-        currentSlideIndex={currentSlideIndex}
+        currentSlideIndex={0}
         setCurrentSlideIndex={setCurrentSlideIndex}
+        onExit={() => setIsPresentationMode(false)}
       />
     );
   }

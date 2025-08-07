@@ -50,6 +50,13 @@ export const useHistory = (initialState: Slide[]) => {
   }, []);
 
   const pushHistory = useCallback((newState: Slide[]) => {
+    const deepCopyState = (state: Slide[]): Slide[] => {
+      return state.map((slide) => ({
+        ...slide,
+        elements: slide.elements.map((el) => ({ ...el })),
+      }));
+    };
+
     setHistory((currentHistory) => {
       const { past, present } = currentHistory;
 
@@ -58,7 +65,7 @@ export const useHistory = (initialState: Slide[]) => {
 
       return {
         past: newPast,
-        present: newState,
+        present: deepCopyState(newState),
         future: [],
       };
     });

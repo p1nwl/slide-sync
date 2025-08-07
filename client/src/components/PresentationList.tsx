@@ -76,27 +76,47 @@ export const PresentationList = () => {
       <div className="w-16 h-12 bg-white border rounded relative overflow-hidden">
         {slide.elements
           .slice(0, 3)
-          .map((element: PresentationElement, index: number) => (
-            <div
-              key={index}
-              className="absolute"
-              style={{
-                left: `${(element.position?.x || 0) / 50}%`,
-                top: `${(element.position?.y || 0) / 50}%`,
-                width: `${(element.size?.width || 20) / 50}%`,
-                height: `${(element.size?.height || 20) / 50}%`,
-                backgroundColor: element.style?.backgroundColor || "#e5e7eb",
-                border: `1px solid ${element.style?.borderColor || "#d1d5db"}`,
-                borderRadius: element.style?.borderRadius || "0",
-              }}
-            >
-              {element.type === "text" && (
-                <div className="w-full h-full flex items-center justify-center">
-                  <span className="text-[2px] truncate">T</span>
-                </div>
-              )}
-            </div>
-          ))}
+          .map((element: PresentationElement, index: number) => {
+            const scaleFactor = 0.02;
+
+            return (
+              <div
+                key={index}
+                className="absolute"
+                style={{
+                  left: `${(element.position?.x || 0) * scaleFactor}%`,
+                  top: `${(element.position?.y || 0) * scaleFactor}%`,
+                  width: element.size
+                    ? `${(element.size.width || 20) * scaleFactor}%`
+                    : "auto",
+                  height: element.size
+                    ? `${(element.size.height || 20) * scaleFactor}%`
+                    : "auto",
+                  ...element.style,
+                  border: element.style?.border || "none",
+                  borderRadius: element.style?.borderRadius || "0",
+                  backgroundColor:
+                    element.style?.backgroundColor || "transparent",
+                  fontSize: "2px",
+                }}
+              >
+                {element.type === "text" && (
+                  <div className="w-full h-full flex items-center justify-center overflow-hidden">
+                    <span className="truncate">T</span>
+                  </div>
+                )}
+                {element.type === "image" && (
+                  <div className="w-full h-full bg-gray-200 flex items-center justify-center">
+                    <span className="text-[2px]">🖼</span>
+                  </div>
+                )}
+                {(element.type === "rectangle" ||
+                  element.type === "circle") && (
+                  <div className="w-full h-full" />
+                )}
+              </div>
+            );
+          })}
       </div>
     );
   };
