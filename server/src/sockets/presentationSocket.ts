@@ -46,9 +46,6 @@ export const setupSocketHandlers = (io: Server, socket: Socket) => {
   socket.on("join_presentation", async (data: JoinPresentationData) => {
     try {
       const { presentationId, userId, nickname } = data;
-      console.log(
-        `Socket ${socket.id} attempting to join presentation ${presentationId} as user ${userId} (${nickname})`
-      );
 
       socket.join(presentationId);
 
@@ -67,13 +64,7 @@ export const setupSocketHandlers = (io: Server, socket: Socket) => {
         if (existingUser.nickname !== nickname) {
           presentation.users[existingUserIndex].nickname = nickname;
           await presentation.save();
-          console.log(
-            `[JOIN] User ${userId} nickname updated in presentation ${presentationId}`
-          );
         }
-        console.log(
-          `[JOIN] User ${userId} found in presentation ${presentationId}, no changes needed.`
-        );
       } else {
         presentation.users.push({
           id: userId,
@@ -82,9 +73,6 @@ export const setupSocketHandlers = (io: Server, socket: Socket) => {
         });
 
         await presentation.save();
-        console.log(
-          `[JOIN] New user ${userId} added to presentation ${presentationId} as viewer`
-        );
       }
 
       const updatedPresentation = await Presentation.findById(presentationId);
@@ -108,15 +96,8 @@ export const setupSocketHandlers = (io: Server, socket: Socket) => {
     async (data: { presentationId: string; userId: string }) => {
       try {
         const { presentationId, userId } = data;
-        console.log(
-          `[LEAVE] Socket ${socket.id} attempting to leave presentation ${presentationId} as user ${userId}`
-        );
 
         socket.leave(presentationId);
-        console.log(`[LEAVE] Socket ${socket.id} left room ${presentationId}`);
-        console.log(
-          `[LEAVE] User ${userId} left presentation ${presentationId} (not removed from user list)`
-        );
       } catch (error) {
         console.error("[LEAVE] Error in leave_presentation handler:", error);
       }
@@ -126,9 +107,6 @@ export const setupSocketHandlers = (io: Server, socket: Socket) => {
   socket.on("change_user_role", async (data: UserUpdateData) => {
     try {
       const { presentationId, userId, role } = data;
-      console.log(
-        `Changing role for user ${userId} in presentation ${presentationId} to ${role}`
-      );
 
       const setResult = await Presentation.updateOne(
         { _id: presentationId, "users.id": userId },
@@ -137,7 +115,6 @@ export const setupSocketHandlers = (io: Server, socket: Socket) => {
 
       if (setResult.matchedCount > 0) {
         if (setResult.modifiedCount > 0) {
-          console.log(`Role changed for user ${userId} to ${role}`);
           const updatedPresentation = await Presentation.findById(
             presentationId
           );
@@ -148,7 +125,6 @@ export const setupSocketHandlers = (io: Server, socket: Socket) => {
             );
           }
         } else {
-          console.log(`Role for user ${userId} was already ${role}`);
         }
       } else {
         console.warn(
@@ -169,9 +145,6 @@ export const setupSocketHandlers = (io: Server, socket: Socket) => {
     }) => {
       try {
         const { presentationId, slideIndex, elements } = data;
-        console.log(
-          `Updating slide ${slideIndex} in presentation ${presentationId}`
-        );
 
         const setResult = await Presentation.updateOne(
           { _id: presentationId, [`slides.${slideIndex}`]: { $exists: true } },
@@ -179,9 +152,6 @@ export const setupSocketHandlers = (io: Server, socket: Socket) => {
         );
 
         if (setResult.matchedCount > 0) {
-          console.log(
-            `Slide ${slideIndex} updated in presentation ${presentationId}`
-          );
           io.to(presentationId).emit("slide_updated", {
             slideIndex,
             elements,
@@ -202,9 +172,6 @@ export const setupSocketHandlers = (io: Server, socket: Socket) => {
     async (data: { presentationId: string; userId: string }) => {
       try {
         const { presentationId, userId } = data;
-        console.log(
-          `Adding slide to presentation ${presentationId} by user ${userId}`
-        );
 
         const presentation = await Presentation.findOne({
           _id: presentationId,
@@ -224,7 +191,6 @@ export const setupSocketHandlers = (io: Server, socket: Socket) => {
           );
 
           if (pushResult.modifiedCount > 0) {
-            console.log(`Slide added to presentation ${presentationId}`);
             const updatedPresentation = await Presentation.findById(
               presentationId
             );
@@ -259,9 +225,6 @@ export const setupSocketHandlers = (io: Server, socket: Socket) => {
     }) => {
       try {
         const { presentationId, slideIndex, userId } = data;
-        console.log(
-          `Removing slide ${slideIndex} from presentation ${presentationId} by user ${userId}`
-        );
 
         const presentation = await Presentation.findOne({
           _id: presentationId,
@@ -284,9 +247,6 @@ export const setupSocketHandlers = (io: Server, socket: Socket) => {
                   slide.order = index;
                 });
                 await pres.save();
-                console.log(
-                  `Slide ${slideIndex} removed and slides reindexed in presentation ${presentationId}`
-                );
                 io.to(presentationId).emit("presentation_updated", pres);
               }
             });

@@ -18,9 +18,6 @@ export const PresentationEditor = () => {
   const { userId, nickname } = usePresentationStore();
   const hasJoinedRef = useRef(false);
 
-  console.log("App/UserStore State:", { userId, nickname });
-  console.log("Presentation ID from URL params:", id);
-
   const {
     presentation,
     loading,
@@ -45,27 +42,19 @@ export const PresentationEditor = () => {
   } = useHistory(presentation?.slides || []);
 
   useEffect(() => {
-    console.log("useEffect (join/leave): Running", { id, userId, nickname });
+    if (presentation?.slides) {
+      pushHistory(presentation.slides);
+    }
+  }, [presentation?.slides, pushHistory]);
+
+  useEffect(() => {
     if (id && userId && nickname) {
-      console.log("useEffect (join/leave): Joining presentation", {
-        id,
-        userId,
-        nickname,
-      });
       joinPresentation(id, userId, nickname);
       hasJoinedRef.current = true;
     }
 
     return () => {
-      console.log("useEffect (join/leave): Cleanup function running", {
-        id,
-        userId,
-      });
       if (id && userId && hasJoinedRef.current) {
-        console.log("useEffect (join/leave): Leaving presentation", {
-          id,
-          userId,
-        });
         leavePresentation(id, userId);
       }
       hasJoinedRef.current = false;
@@ -73,22 +62,14 @@ export const PresentationEditor = () => {
   }, [id, userId, nickname, joinPresentation, leavePresentation]);
 
   useEffect(() => {
-    console.log("Checking user access...", { presentation, userId });
     if (presentation && userId) {
       const currentUser = presentation.users.find((u) => u.id === userId);
-      console.log("Current user in presentation:", currentUser);
       if (!currentUser) {
         console.warn("User not found in presentation, redirecting...");
         navigate("/presentations");
       }
     }
   }, [presentation, userId, navigate]);
-
-  useEffect(() => {
-    if (presentation?.slides) {
-      pushHistory(presentation.slides);
-    }
-  }, [presentation?.slides, pushHistory]);
 
   if (loading) {
     return (
@@ -143,8 +124,22 @@ export const PresentationEditor = () => {
       }
     }
   };
+
+  const handleUpdateCurrentSlideLocally = (elements: PresentationElement[]) => {
+    if (!presentation) return;
+
+    const newSlides = [...historySlides];
+    newSlides[currentSlideIndex] = {
+      ...newSlides[currentSlideIndex],
+      elements,
+    };
+
+    pushHistory(newSlides);
+  };
+
   const handleUpdateCurrentSlide = (elements: PresentationElement[]) => {
     if (!presentation || !id) return;
+    handleUpdateCurrentSlideLocally(elements);
     updateCurrentSlide(elements);
   };
 

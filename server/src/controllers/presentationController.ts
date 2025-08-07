@@ -35,9 +35,6 @@ export const presentationController = {
       });
 
       const savedPresentation = await newPresentation.save();
-      console.log(
-        `[CONTROLLER] Created new presentation with ID: ${savedPresentation._id} for creator ${creatorUserId}`
-      );
       res.status(201).json(savedPresentation);
     } catch (error) {
       console.error("[CONTROLLER] Error creating presentation:", error);

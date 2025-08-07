@@ -16,7 +16,6 @@ export const usePresentation = (presentationId?: string) => {
     if (!presentationId) return;
 
     const handleUsersUpdated = (users: User[]) => {
-      console.log("WebSocket: users_updated received (RAW)", users);
       setPresentation((prev) => (prev ? { ...prev, users } : null));
     };
 
@@ -32,7 +31,6 @@ export const usePresentation = (presentationId?: string) => {
       elements: PresentationElement[];
     }) => {
       setPresentation((prev) => {
-        console.log("[WS] slide_updated received", { slideIndex, elements });
         if (!prev) return null;
         const newSlides = [...prev.slides];
         if (newSlides[slideIndex]) {
@@ -57,9 +55,7 @@ export const usePresentation = (presentationId?: string) => {
     if (!presentationId) return;
     try {
       setLoading(true);
-      console.log("Loading presentation with ID:", presentationId);
       const data = await api.getPresentation(presentationId);
-      console.log("Loaded presentation data:", data);
       setPresentation(data);
     } catch (err) {
       setError("Failed to load presentation");

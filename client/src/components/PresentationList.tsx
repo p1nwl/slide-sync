@@ -37,14 +37,10 @@ export const PresentationList = () => {
 
     try {
       setLoading(true);
-      console.log(`[UI] Creating presentation with creator ID: ${userId}`);
       const newPresentation = await api.createPresentation(
         newPresentationTitle,
         nickname,
         userId
-      );
-      console.log(
-        `[UI] Presentation created, navigating to ID: ${newPresentation._id}`
       );
       navigate(`/presentation/${newPresentation._id}`);
     } catch (error) {

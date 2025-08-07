@@ -6,12 +6,10 @@ export const useSocket = () => {
   const socketRef = useRef(socket);
 
   useEffect(() => {
-    console.log("Connecting to Socket.IO...");
     const currentSocket = socketRef.current;
     currentSocket.connect();
 
     return () => {
-      console.log("Disconnecting from Socket.IO...");
       currentSocket.disconnect();
     };
   }, []);
